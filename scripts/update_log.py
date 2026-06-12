@@ -38,11 +38,15 @@ QUOTES = [
 ]
 
 # Random commit message templates
-from datetime import datetime
-
-today = datetime.now().strftime("%Y-%m-%d")
-commit_message = f"Auto Commit #{commit_number} - {today}"
-
+COMMIT_MESSAGES = [
+    "Daily activity update",
+    "Repository maintenance",
+    "Automated progress update",
+    "Keeping contributions active",
+    "Timestamp refresh",
+    "Daily Update - {date}",
+    "Auto Commit #{num}"
+]
 
 
 def get_ist_time():
