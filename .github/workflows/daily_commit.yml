@@ -1,0 +1,105 @@
+name: Daily Auto Commit
+
+on:
+  schedule:
+    # 9:00 PM IST (30 15 UTC)
+    - cron: '30 15 * * *'
+  workflow_dispatch: # Allows manual trigger from the Actions tab
+
+# Explicitly grant write permissions to commit and push changes
+permissions:
+  contents: write
+
+jobs:
+  auto-commit:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Checkout the repository content
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          # Fetch all history so commit counting (if git log is used) and commits work properly
+          fetch-depth: 0
+
+      # 2. Set up Python environment
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      # 3. Configure Git user identity
+      - name: Configure Git
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+
+      # 4. Run Python update log script
+      - name: Update Log and Stats
+        id: update_log
+        run: python scripts/update_log.py
+
+      # 5. Display run logs in GitHub Actions console
+      - name: Write Logs to Workflow Output
+        run: |
+          echo "=================================================="
+          echo "           DAILY AUTO COMMIT WORKFLOW             "
+          echo "=================================================="
+          echo "Commit Count  : #${{ steps.update_log.outputs.commit_number }}"
+          echo "Commit Message: ${{ steps.update_log.outputs.commit_message }}"
+          echo "Quote of Day  : ${{ steps.update_log.outputs.daily_quote }}"
+          echo "Timestamp     : $(date)"
+          echo "=================================================="
+
+      # 6. Commit and push changes back to the repo
+      - name: Commit and Push Changes
+        run: |
+          git add .
+          # Check for changes, avoid empty commits unless desired
+          if git diff --quiet && git diff --staged --quiet; then
+            echo "No changes detected. Keeping repo clean."
+          else
+            echo "Changes detected. Creating commit: '${{ steps.update_log.outputs.commit_message }}'"
+            git commit -m "${{ steps.update_log.outputs.commit_message }}"
+            git push origin HEAD:${{ github.ref }}
+          fi
+
+      # 7. Bonus Feature: Send Discord webhook notification
+      - name: Send Discord Webhook Notification
+        if: success() && env.DISCORD_WEBHOOK != ''
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        run: |
+          echo "Sending Discord Webhook notification..."
+          curl -H "Content-Type: application/json" \
+               -X POST \
+               -d "{\"content\": \"🚀 **Daily Auto Commit Successful!**\n- **Commit Count:** #${{ steps.update_log.outputs.commit_number }}\n- **Message:** \`${{ steps.update_log.outputs.commit_message }}\`\n- **Quote of the day:** *\\\"${{ steps.update_log.outputs.daily_quote }}\\\"*\"}" \
+               $DISCORD_WEBHOOK
+
+      # 8. Bonus Feature: Send Email notification (using SMTP server configuration)
+      - name: Send Email Notification
+        if: success() && env.SMTP_SERVER != ''
+        uses: dawidd6/action-send-mail@v3
+        env:
+          SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
+        with:
+          server_address: ${{ secrets.SMTP_SERVER }}
+          server_port: ${{ secrets.SMTP_PORT || 465 }}
+          username: ${{ secrets.SMTP_USERNAME }}
+          password: ${{ secrets.SMTP_PASSWORD }}
+          subject: "GitHub Action: Daily Auto Commit #${{ steps.update_log.outputs.commit_number }} Successful"
+          to: ${{ secrets.NOTIFY_EMAIL }}
+          from: "GitHub Actions Auto-Commit <noreply@github.com>"
+          body: |
+            Hi there,
+
+            The Daily Auto Commit workflow has run successfully on GitHub servers!
+
+            Workflow Details:
+            -----------------
+            - Commit Number: #${{ steps.update_log.outputs.commit_number }}
+            - Commit Message: ${{ steps.update_log.outputs.commit_message }}
+            - Quote of the day: "${{ steps.update_log.outputs.daily_quote }}"
+
+            Best regards,
+            Your DevOps Auto-Commit Agent
